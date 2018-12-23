@@ -1,0 +1,444 @@
+---
+title: "Shiny App for Active Satellite Data"
+author: "Josh Abel, Jared Olson, Ben Siantar"
+date: "12/15/2018"
+output: html_document
+---
+***
+###Table of contents
+**1 - Introduction: Our Data, “Active Satellites in Orbit Around Earth”**
+
+*1.1 - Overall Summary*
+
+*1.2 - The Variables*
+
+*1.3 - Finding Coordinates and Cleaning It Up*
+
+**2 - Our App, Visualizing the Data**
+
+*2.1 - The Plots*
+
+*2.2 - Tab 1: Network*
+
+*2.3 - Tab 2: Stats*
+
+*2.4 - Tab 3: Launch Map*
+
+**3 - Statistical Concepts: An Example of Potential Analysis**
+
+*3.1 - Chosen Variables*
+
+*3.2 - Hypothesis Testing*
+
+*3.3 - Explanation of Results*
+
+*3.4 - Confirming Assumptions*
+
+**4 - Overall Conclusion**
+
+*4.1 - Final Analysis*
+
+*4.2 - Final Thoughts & Thank-You*
+
+***
+
+###1 - Introduction: Our Data, “Active Satellites in Orbit Around Earth”
+
+####__*1.1 - Overall Summary*__
+
+In this report, we will discuss our shiny app and the dataset from which it is based. To begin, let’s look at the dataset. Our dataset is named [Active Satellites in Orbit Around Earth](https://www.kaggle.com/ucsusa/active-satellites/home) from Kaggle, by the **Union of Concerned Scientists**.
+
+This dataset is intended to be an overview of all active satellites in orbit around Earth as of July 2016, meaning that all decommissioned or destroyed satellites are not included, nor are those launched after July of 2016. There are data on 1,420 active satellites with 26 variables, discussed in the following section.
+
+Interestingly enough (though we should have expected it), row 214 of the “database.csv” dataset contains “CP-10”, a CubeSat made by the Cal Poly CubeSat club and launched from nearby Vandenberg AFB in Lompoc, CA.
+
+####__*1.2 - The Variables*__
+
+The 26 variables, arranged as columns of the dataset are as follows, with brief description:
+
+1. Official Name of Satellite – the name given to the Satellite, such as “CP-10”
+
+2. Country/Organization of UN Registry – the country or organization in which the satellite is registered by the United Nations, such as “USA”, or “NR” if not registered
+
+3. Operator/Owner – the operator or owner of the satellite, usually a corporation, government, or other large entity like “California Polytechnic State University”
+
+4. Country of Operator/Owner – the country from which the operator/owner is based, such as “USA”, but sometimes multiple countries share a satellite
+
+5. Users – the users of the satellite, such as “Civil”, “Military”, “Commercial”, etc.
+
+6. Purpose – the satellite’s general purpose, such as “Earth Observation”
+
+7. Detailed Purpose – a more specific version of the above column (Purpose), such as “Earth Science”
+
+8. Class of Orbit – distance from earth and general shape of orbit, such as “LEO” (or “Low Earth Orbit”)
+
+9. Type of Orbit – more detail on the shape of orbit, such as “Elliptical”
+
+10. Longitude of Geosynchronous Orbit (in degrees) – the longitude of orbit, if Geosynchronous, “0” otherwise
+
+11. Perigee (in Kilometers) – the point of orbit closest to Earth
+
+12. Apogee (in Kilometers) – the point of orbit farthest from Earth
+
+13. Eccentricity – the amount orbit is away from a perfect circle - a value of 0 represents a perfect circle
+
+14. Inclination (in degrees) – the inclination of the orbit with respect to the equator
+
+15. Period (in minutes) – the time in minutes for the satellite to complete one orbit
+
+16. Mass (in kilograms) – the mass of satellite
+
+17. Dry Mass (Kilograms) – the mass of satellite without propellant
+
+18. Power (in watts) – the size of the power system on board satellite
+
+19. Date of Launch – the date satellite was launched
+
+20. Expected Lifetime (in years) – the expected lifetime of the satellite
+
+21. Contractor – the developer of the satellite, such as “California Polytechnic University / NASA JPL”
+
+22. Country of Contractor – Country in which contractor is located, such as “USA”
+
+23. Launch Site – the location of launch site, such as “Vandenberg AFB”
+
+24. Launch Vehicle – the name of vehicle (or rocket, as it is usually known) that sent satellite into space, such as “Delta 2”
+
+25. COSPAR Number – the “Committee on Space Research” Number
+
+26. NORAD Number – the “North American Aerospace Defense Command” Number
+
+####__*1.3 - Finding Coordinates and Cleaning It Up*__
+
+After downloading the data from Kaggle, we then needed to clean it up a bit, as we wanted one of our outputs in our shiny app to be a map of launch locations, and (unfortunately for us) there was no data referencing launch latitude or longitude.
+
+After some research, we used the package [geonames](https://cran.r-project.org/web/packages/geonames/geonames.pdf) by Barry Rowlingson. Basically, geonames searched its database for matching locations and outputs the corresponding coordinate information.
+
+In the event that no coordinates were matched to the location we gave geonames, which was “Launch Site” (variable # 23 from above), geonames instead gave coordinate information for the “Country of Operator/Owner” (variable # 4 from above).
+
+The resulting data were the same 1,420 rows, now with the additional two columns:
+
+27. Launch Longitude – the launch longitude, from above
+
+28. Launch Latitude – the launch latitude, from above
+
+***
+
+###2 - Our App, Visualizing the Data
+
+####__*2.1 - Summary*__
+
+Our shiny app, called [“Satellite Data Visualizations”](https://soa-satellites.shinyapps.io/phase4/) (or the hyperlink: https://soa-satellites.shinyapps.io/phase4/ ) has three tabs with a variety of options for displaying data numerically and graphically, and for exploring relationships between variables.
+
+We use the following packages in our app:
+
+```{r message=FALSE, warning=FALSE}
+library(networkD3)
+library(leaflet)
+library(shiny)
+library(tidyverse)
+```
+
+Reading in our data:
+```{r}
+# Basic import:
+df2 <- read.csv(file="database_cleaned_v3.csv",
+                header = T, sep = ",", check.names = FALSE)
+df <- as.tibble(read.csv("database.csv",
+                         header = T, stringsAsFactors = F))
+```
+
+```{r}
+# Adjusting and cleaning up, due to data import changes:
+df$X <- NULL
+df2[,1] <- NULL
+
+df2$Period..Minutes. <- as.numeric(df2$Period..Minutes.)
+df2$Launch.Mass..Kilograms. <- as.numeric(df2$Launch.Mass..Kilograms.)
+df2$Dry.Mass..Kilograms. <- as.numeric(df2$Dry.Mass..Kilograms.)
+df2$Power..Watts. <- as.numeric(df2$Power..Watts.)
+df2$Expected.Lifetime..Years. <- as.numeric(df2$Expected.Lifetime..Years.)
+```
+
+####__*2.2 - Tab 1: Network*__
+
+The first tab - “Network” - utilizes [NetworkD3](https://cran.r-project.org/web/packages/networkD3/networkD3.pdf) to show purpose relationships by country. Basically, the user inputs a country of choice (along with a couple of display options), and then a network will appear that indicates the general purpose of all satellites launched by that country (or an entity in that country) from our data set.
+
+Connected to these purposes are the detailed purpose data from above. If there is a node with the name None, then there was no specific purpose as to why the satellite is/was used, other than its general purpose. The following is a simplification of our plot for this report.
+
+User inputs:
+
+```{r}
+# Select Country:
+Network.Country <- "USA"
+
+# Select Node Color:
+Network.Node <- "Red"
+
+# Select Link Color:
+Network.Link <- "Black"
+```
+
+Generating the output, where we have a little bit more data cleaning within our file, some of which we may have been able to do elsewhere:
+
+```{r}
+# Filter down data frame to Country.of.Operator.Owner selected, Detailed.Purpose, Purpose
+  newdf <- filter(df, Country.of.Operator.Owner == Network.Country) %>%
+    select(Country.of.Operator.Owner, Detailed.Purpose, Purpose)
+  
+# Changing Empty observations to None
+  for (i in 1:length(newdf$Purpose)) {
+    if (newdf$Detailed.Purpose[i] == "") {
+      newdf$Detailed.Purpose[i] <- "None"
+    }
+    
+    if (newdf$Purpose[i] == "") {
+      newdf$Purpose[i] <- "None"
+    }
+  }
+  
+# Creating source and target vectors and making a new data frame from them
+  src <- newdf$Detailed.Purpose
+  target <- newdf$Purpose
+  networkData <- data.frame(src, target)
+  
+# Creating the network
+  simpleNetwork(networkData, nodeColour = Network.Node, linkColour = Network.Link, zoom = TRUE)
+
+```
+
+####__*2.3 - Tab 2: Stats*__
+
+The second tab displays a bivariate plot (with a regression line), a univariate histogram plot, and does a simple t-Test of the input data. The user is able to select from any of the variables in our data set for the “Scatter Plot X & Histogram” and for the “Scatter Plot Y” inputs.
+
+In our app, two quantitative variables provide a scatter plot, histogram and T-test. A quantitative X variable and a qualitative Y variable provides a scatter plot and a histogram. A qualitative X variable and a quantitative Y variable provides a scatter plot and a T-test. Lastly, two qualitative variables provide only a bivariate plot. The following is a simplification of our plots for this report.
+
+The user is also able to select display inputs, seen below:
+
+```{r}
+stats.x <- df2$Perigee..Kilometers.
+stats.y <- df2$Apogee..Kilometers.
+
+regression.color <- "Red"
+regression.width <- 2
+histogram.color <- "Green"
+```
+
+Generating the output:
+
+```{r}
+# Plot 1: Condense data frame to the x and y variable by user input
+  lit <- c(stats.x, stats.y)
+  superlit <- stats.x
+ 
+# Create the plot
+  plot(lit, col = "blue", main = "Bivariate Plot of Two Categories")
+
+# Add trend line
+    mod <- lm(stats.x ~ stats.y)
+    abline(mod, col = regression.color, lwd = regression.width)
+```
+
+```{r}
+# Plot 2: Create histogram
+    hist(superlit,
+         xlab = stats.x,
+         main = "Univariate Historgam of Specified Category", 
+         col = histogram.color )
+```
+
+```{r}
+# Plot (kinda...) 3: T-test
+    summary(mod) 
+```
+
+####__*2.4 - Tab 3: Launch Map*__
+
+The third, and final tab, is the launch map, as we described when discussing geonames in section 1.3 - Finding Coordinates and Cleaning It Up. While this tab had the fewest number of options for input, only asking for a date range, it shows an adaptive map using the package [Leaflet](https://cran.r-project.org/web/packages/leaflet/leaflet.pdf).
+
+Moreover, through the powers of Leaflet, it allows users to click on a location marker to see an example of a satellite name launched at that location within the input date range.
+
+On another note, while we wanted to be able to have an error message appear if the date range was inputted incorrectly (with start on the right and end on the left), we were unable to do so, and the graph will only appear blank. While the other two tabs are changeable in this report, the combination of date range and leaflet is actually more powerful, so we decided that for this tab we would show some of the code, but then show all launch locations.
+
+For example, to show Vandenburg on the map tab of our [app](https://soa-satellites.shinyapps.io/phase4/), input the date range “2006-04-15” to “2006-04-15”.
+
+Example inputs:
+
+```{r}
+# Note: these are examples only (they won't effect the map here, but they will on the shiny app) for this output, which displays all launch locations
+map.start <- 2015-1-31
+map.end <- 2015-2-28
+```
+
+Example of the code we used to run the map (once again, we have the cleaning up of data within our file):
+
+```{r}
+# Subset data based on year input
+    dates <- df2$Date.of.Launch
+  
+    years <- c()
+    months <- c()
+    days <- c()
+
+# Put each year month and day into appropriate vector
+    for (i in 1:length(dates)) {
+      year <- as.integer(str_sub(dates[i], 1, 4))
+      month <- as.integer(str_sub(dates[i], 6, 7))
+      day <- as.integer(str_sub(dates[i], 9, 10))
+      
+      years <- c(years, year)
+      months <- c(months, month)
+      days <- c(days, day)
+    }
+    
+# Add the vectors to the data frame
+    df3 <- df2
+    df3$years <- years
+    df3$months <- months
+    df3$days <- days
+    
+    df3 <- df3[-c(1)]
+    
+# Grab input dates
+    start <- map.start
+    end <- map.end
+    newdf <- df3
+    
+# Filter data frame based on the input dates
+    newdf <- filter(newdf, as.numeric(years) | as.numeric(months) 
+                    | as.numeric(days)) %>%
+      filter((as.integer(str_sub(start, 1, 4)) <= years) &
+               (as.integer(str_sub(end, 1, 4)) >= years)) %>%
+      filter(!((as.integer(str_sub(start, 6, 7)) > months) &
+                 (as.integer(str_sub(start, 1, 4)) == years)) & 
+               !((as.integer(str_sub(end, 6, 7)) < months) &
+                   (as.integer(str_sub(end, 1, 4)) == years))) %>%
+      filter(!((as.integer(str_sub(start, 9, 10)) > days) &
+                 (as.integer(str_sub(start, 6, 7)) == months) &
+                 (as.integer(str_sub(start, 1, 4)) == years)) &
+               !((as.integer(str_sub(end, 9, 10)) < days) &
+                   (as.integer(str_sub(end, 6, 7)) == months) &
+                   (as.integer(str_sub(end, 1, 4)) == years)))
+    combo <- list(df = newdf, names = as.character(newdf$Official.Name.of.Satellite))
+```
+
+All launch locations (the simplified map, as mentioned above):
+
+```{r}
+# Create Map, simplified for this report to show all launch locations:
+m <- leaflet()
+m <- addTiles(m)
+m <- addMarkers(m, lng=df2$launch.lng, lat=df2$launch.lat, popup=c(df2$Date.of.Launch))
+```
+
+```{r}
+m
+```
+
+***
+
+###3 - Statistical Concepts: An Example of Potential Analysis
+
+####__*3.1 - Chosen Variables*__
+
+One example that we chose to look at was the total mass of the satellite (dry mass is the same without propellant) versus type of orbit.
+
+First, let’s look at type of orbit, as mass (which includes propellant) should be a self-defining term. Here, we can see that 521 satellites do not have any information for type of orbit, and that the second-most-popular orbit type is “Sun-Synchronous” - according to [Wikipedia](https://en.wikipedia.org/wiki/Sun-synchronous_orbit):
+
+> “A Sun-synchronous orbit (SSO, also called a heliosynchronous orbit) is a nearly polar orbit around a planet, in which the satellite passes over any given point of the planet’s surface at the same local mean solar time.
+
+```{r}
+data.frame(table(df2$Type.of.Orbit))
+```
+
+A histogram of launch mass reveals nothing major, and has the appearance of semi-uniformity.
+
+```{r}
+hist(df2$Launch.Mass..Kilograms.)
+```
+
+However, the boxplot of launch mass versus type of orbit (once it’s “up there”) tells a different story, one which we will use statistical concepts to try to explain:
+
+```{r}
+plot(data = df2, Dry.Mass..Kilograms. ~ Type.of.Orbit,
+     main = "Launch Mass by Type of Orbit")
+```
+
+####__*3.2 - Hypothesis Testing*__
+
+First, we conduct an AVOVA to determine if there is any difference in the dependent, quantitative response variable, in our case the mean launch mass, caused by the independent, categorical (qualitative) type of orbit.
+
+A low p-value of 2.2e-16 tells us that at least one of the means is different.
+
+```{r}
+mod <- lm(data = df2, Launch.Mass..Kilograms. ~ Type.of.Orbit)
+anova(mod)
+```
+
+Then, if we continue with a simple regression analysis. Here, the “Cislunar” and “Deep Highly Eccentric” p-values are much greater than 0.05, so we fail to reject them. Additionally, the “Equatorial” and “Molniya” categories are slightly greater than 0.05, so we fail to reject at alpha of 0.95, but we would have rejected the null if the alpha were .90.
+
+```{r}
+summary(mod)
+```
+
+####__*3.3 - Explanation of Results*__
+
+Tukey’s Honest Significant Difference test conforms our findings in 3.2 - Hypothesis Testing - while a few of the means are clearly different, some are not.
+
+```{r}
+Tukey <- TukeyHSD(aov(df2$Launch.Mass..Kilograms. ~ df2$Type.of.Orbit))
+plot(Tukey)
+```
+
+####__*3.4 - Confirming Assumptions*__
+
+To test whether or not we should have much confidence in our conclusions, we should test the assumptions required for regression / ANOVA:
+
+**Linearity** (fitted values vs standardized residuals) - there’s not much of an ugly spread here, residuals are scattered similarly - we assume Linearity
+
+**Normality** (histogram & qqplot of residuals) - there isn’t much departure from the line, but considering the 1,420 data points, there could be, which we could have tested using the shapiro-wilk test or something similar - assume Normality
+
+**Independence** (index vs standardized residuals) - the scatter appears to be very good, as expected with so much data - assume Independence
+
+**Constant variance** (fitted values vs standardized residuals) - similar to linearity, not much fanning, scatter is good - assume Constant Variance
+
+```{r}
+par(mfrow=c(2,2))
+#=================
+plot(rstandard(mod) ~ fitted(mod), main="Standardized residuals by fitted values", ylab="Standardized residual", xlab="Fitted value")
+abline(h=0)
+#=================
+hist(rstandard(mod),xlab="Standardized Residuals",main="")
+#=================
+qqnorm(rstandard(mod))
+qqline(rstandard(mod))
+#=================
+plot(mod$residuals)
+```
+
+All assumptions are confirmed, so we believe that we can conclude that type of orbit has some effect on mean launch mass.
+
+***
+
+###4 - Overall Conclusion
+
+####__*4.1 - Final Analysis*__
+
+Within our shiny app, our plots help reveal the truth: satellites are extremely diverse. Many people have seen them orbiting overhead, as tiny bright dots in the sky, but using out shiny app, anyone can see that there are many differences in them:
+
+* Our __*Network*__ not only shows how different countries use satellites (like the USA versus Russia or China), but also shows the many different purposes that satellites are sent for, and how they may help us.
+
+* Our __*Statistical Plots and Graphs*__ show how different characteristics within a satellite relate to each other (like in our example analysis in section 3) and they reveal how diverse those characteristics can be. We only highlighted a couple of variables, but users can look at a vast variety of different relationships.
+
+* Our __*Map*__ highlights how satellites come from all over the world, but if you change the date range around, you can look at how the names and locations of launch sites have changed over time.
+
+Unfortunately the first satellite (that we know of!) called [Sputnik 1](https://en.wikipedia.org/wiki/Sputnik_1) has long since fallen out of orbit (and it didn’t hit anyone, much to many an American’s surprise), but now we can see where many of its modern-day descendants hail from.
+
+####__*4.2 - Final Thoughts & Thank-You*__
+
+We all appreciated the opportunity to learn more about satellites while learning more in R. We thank you, Dr. Glanz, for teaching us and keeping us entertained throughout. We hope that our final on Thursday goes well, but in any case we’ll be happy since we’ll have cookies!
+
+**Happy Holidays,**
+
+**Josh Abel, Jared Olson, and Ben Siantar**
+
